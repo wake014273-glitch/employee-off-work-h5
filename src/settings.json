@@ -45,7 +45,8 @@
         "preloadAssets": [],
         "projectBundles": [
             "internal",
-            "main"
+            "main",
+            "art"
         ],
         "downloadMaxConcurrency": 15
     },
