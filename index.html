@@ -38,7 +38,7 @@
 
 </head>
 <body>
-<div id="startup-cover" aria-label="摸鱼加载中" style="position:fixed;inset:0;z-index:10000;background:#202c50;pointer-events:none"><canvas style="width:100%;height:100%;display:block"></canvas></div><script id="offwork-startup">(function browserScreen(Progress, contour) {
+<div id="startup-cover" aria-label="摸鱼加载中" style="position:fixed;inset:0;z-index:10000;background:#202c50;pointer-events:none"><canvas style="width:100%;height:100%;display:block"></canvas></div><script id="offwork-startup">(function browserScreen(Progress, contour, geometry) {
   const cover = document.getElementById('startup-cover');
   const canvas = cover.querySelector('canvas'), context = canvas.getContext('2d');
   const image = new Image(), progress = new Progress(); let ready = false, stopped = false, raf, previous = 0;
@@ -59,8 +59,9 @@
       context.arcTo(956,2108,915,2108,41);context.lineTo(170,2108);context.arcTo(129,2108,129,2067,41);
       context.arcTo(129,2026,170,2026,41);context.closePath();context.clip();
       context.drawImage(image,800,2026,8,82,129,2026,827,82);
-      if(p>0)context.drawImage(image,250,2026,8*p,82,129,2026,827*p,82);
-      context.restore();context.save();context.translate(129+659*p-420,0);context.beginPath();
+      const bar=geometry(p);
+      context.drawImage(image,250,2026,8,82,129,2026,bar.fillPixels,82);
+      context.restore();context.save();context.translate(bar.fishLeft-420,0);context.beginPath();
       contour.forEach(([x,y],i)=>i?context.lineTo(x,y):context.moveTo(x,y));context.closePath();context.clip();
       context.drawImage(image,420,2004,168,130,420,2004,168,130);context.restore();
     }
@@ -79,7 +80,11 @@
     if (Number.isFinite(dt) && dt > 0) this.value = Math.min(this.target, this.value + Math.min(dt, 0.1) * 0.8);
     return this.value;
   }
-},[[503,2008],[487,2012],[478,2028],[459,2040],[450,2048],[439,2038],[430,2038],[423,2046],[423,2058],[430,2070],[425,2080],[423,2092],[428,2102],[437,2107],[450,2100],[461,2093],[478,2107],[490,2113],[489,2118],[497,2125],[513,2127],[527,2121],[532,2114],[550,2107],[570,2090],[583,2073],[585,2066],[580,2055],[565,2039],[543,2025],[532,2014],[519,2007]]);</script>
+},[[503,2008],[487,2012],[478,2028],[459,2040],[450,2048],[439,2038],[430,2038],[423,2046],[423,2058],[430,2070],[425,2080],[423,2092],[428,2102],[437,2107],[450,2100],[461,2093],[478,2107],[490,2113],[489,2118],[497,2125],[513,2127],[527,2121],[532,2114],[550,2107],[570,2090],[583,2073],[585,2066],[580,2055],[565,2039],[543,2025],[532,2014],[519,2007]],function loadingBarGeometry(value        ) {
+  const progress = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+  const fishLeft = 129 + 659 * progress;
+  return { fishLeft, fillPixels: fishLeft + 84 - 129 };
+});</script>
   <div id="GameDiv" cc_exact_fit_screen="true">
       <div id="Cocos3dGameContainer">
         <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="99"></canvas>
