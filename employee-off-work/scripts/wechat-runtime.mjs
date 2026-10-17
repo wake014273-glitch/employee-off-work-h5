@@ -2,6 +2,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import vm from 'node:vm';
 
+export function selectWechatEngineModule(files) {
+  const candidates = files.filter(name => name === 'cc.js' || /^_virtual_cc-.+\.js$/.test(name));
+  if (candidates.length !== 1) throw new Error(`Expected one Cocos engine module, found ${candidates.length}`);
+  return candidates[0];
+}
+
 const OLD_PREFIX = 'var window = GameGlobal;\nvar document = GameGlobal.document;\n';
 const PREFIX = 'var window = GameGlobal;\nvar document;\n';
 const BINDING = '\n// Bind after the adapter creates the phone document, before engine input starts.\ndocument = GameGlobal.document;\n';

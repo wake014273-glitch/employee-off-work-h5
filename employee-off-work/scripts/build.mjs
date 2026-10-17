@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fixWechatAdapterDocument } from './wechat-runtime.mjs';
+import { fixWechatAdapterDocument, selectWechatEngineModule } from './wechat-runtime.mjs';
 import { applyStartupArt } from './startup-art.mjs';
 import { packageFriends } from './package-friends.mjs';
 import { stampSource, verifyCompiledSource } from './source-fingerprint.mjs';
@@ -56,14 +56,13 @@ function applyWechatRuntimeAliases(outputDir) {
   // Current WeChat DevTools exposes these APIs on GameGlobal but no longer exposes
   // their corresponding free variables to each required script. Cocos 3.8.8 uses
   // those variables in its generated adapter and engine files.
-  const engineFiles = readdirSync(join(outputDir, 'cocos-js')).filter((name) => /^_virtual_cc-.+\.js$/.test(name));
-  if (engineFiles.length !== 1) throw new Error(`Expected one Cocos engine module, found ${engineFiles.length}`);
+  const engineFile = selectWechatEngineModule(readdirSync(join(outputDir, 'cocos-js')));
   const aliases = [
     ['web-adapter.js', 'var window = GameGlobal;\nvar document = GameGlobal.document;\n'],
     ['src/system.bundle.js', 'var global = GameGlobal;\n'],
     ['game.js', 'var window = GameGlobal;\n'],
     ['first-screen.js', 'var window = GameGlobal;\nvar requestAnimationFrame = GameGlobal.requestAnimationFrame.bind(GameGlobal);\nvar cancelAnimationFrame = GameGlobal.cancelAnimationFrame.bind(GameGlobal);\n'],
-    [`cocos-js/${engineFiles[0]}`, 'var global = GameGlobal;\nvar DOMParser = GameGlobal.DOMParser;\nvar document = GameGlobal.document;\nvar window = GameGlobal;\nvar requestAnimationFrame = GameGlobal.requestAnimationFrame.bind(GameGlobal);\nvar cancelAnimationFrame = GameGlobal.cancelAnimationFrame.bind(GameGlobal);\n'],
+    [`cocos-js/${engineFile}`, 'var global = GameGlobal;\nvar DOMParser = GameGlobal.DOMParser;\nvar document = GameGlobal.document;\nvar window = GameGlobal;\nvar requestAnimationFrame = GameGlobal.requestAnimationFrame.bind(GameGlobal);\nvar cancelAnimationFrame = GameGlobal.cancelAnimationFrame.bind(GameGlobal);\n'],
     ['engine-adapter.js', 'var window = GameGlobal;\n'],
   ];
   for (const [relativePath, prefix] of aliases) {

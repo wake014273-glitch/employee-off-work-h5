@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { bindWechatAdapterDocument } from '../scripts/wechat-runtime.mjs';
+import { bindWechatAdapterDocument, selectWechatEngineModule } from '../scripts/wechat-runtime.mjs';
 import { approvedWechatApplication, approvedWechatGameBootstrap, approvedWechatFirstScreen } from '../scripts/startup-art.mjs';
 
 // A phone starts without document. The adapter installs it before Cocos adds input listeners.
+test('runtime aliases support both split and trimmed release engine filenames', () => {
+  assert.equal(selectWechatEngineModule(['_virtual_cc-abc.js','spine.js']), '_virtual_cc-abc.js');
+  assert.equal(selectWechatEngineModule(['cc.js']), 'cc.js');
+  assert.throws(()=>selectWechatEngineModule(['other.js']), /found 0/);
+  assert.throws(()=>selectWechatEngineModule(['cc.js','_virtual_cc-abc.js']), /found 2/);
+});
+
 const adapter = `GameGlobal.document = {
   listeners: [], addEventListener(type, callback) { this.listeners.push(callback); },
   dispatchEvent() { this.listeners.forEach(callback => callback()); }

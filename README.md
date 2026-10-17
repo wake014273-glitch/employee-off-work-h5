@@ -4,10 +4,10 @@
 
 ## 当前分享版本（2026-10-17）
 
-- 公开网页试玩：[点击游玩](https://wake014273-glitch.github.io/employee-off-work-h5/?v=20261017-5f07a47b3b94efe4)。可转发给其他玩家，在手机微信或浏览器内打开。
+- 公开网页试玩：[点击游玩](https://wake014273-glitch.github.io/employee-off-work-h5/?v=20261017-587580702cd604d5)。可转发给其他玩家，在手机微信或浏览器内打开。
 - GitHub 源码：[codex/current-source 分支](https://github.com/wake014273-glitch/employee-off-work-h5/tree/codex/current-source)；`main` 分支用于 GitHub Pages 网页分发。
-- 分享二维码：`docs/screenshots/public-current-20261017-qrcode.png`。当前构建源码指纹：`source:5f07a47b3b94efe4`。
-- 本版包含困难 4、5、6 与后期上限调整、当前音效，以及加载进度、画面交接和状态恢复修复。见 [代码审查记录](docs/PROJECT_CODE_AUDIT_20261017.md)。
+- 分享二维码：`docs/screenshots/loading-fast-public-20261017-qrcode.png`。当前构建源码指纹：`source:587580702cd604d5`。
+- 本版包含困难 4、5、6 与后期上限调整、当前音效、加载状态修复，以及 [进度末端遮挡与启动提速](docs/LOADING_SPEED_AND_FILL_20261017.md)。
 
 从源码构建需自行安装 Cocos Creator 3.8.8，并将 `COCOS_EDITOR` 环境变量设为编辑器可执行文件路径；仓库不包含编辑器、缓存与本地构建目录。
 

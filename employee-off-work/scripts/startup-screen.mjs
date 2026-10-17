@@ -1,4 +1,4 @@
-import { LoadingProgress } from '../assets/scripts/model/AsyncLoading.ts';
+import { LoadingProgress, loadingBarGeometry } from '../assets/scripts/model/AsyncLoading.ts';
 
 // Use the same original artwork coordinates as GameInterface, without changing the bitmap.
 export const FISH_CONTOUR = [[503,2008],[487,2012],[478,2028],[459,2040],[450,2048],[439,2038],
@@ -19,6 +19,7 @@ export const STARTUP_FRAGMENT = `precision highp float;
 uniform sampler2D u_Poster;
 uniform vec2 u_Size;
 uniform float u_Progress;
+uniform float u_FillEnd;
 uniform float u_HasPoster;
 bool fish(vec2 p) { bool hit = false; ${fishShader()} return hit; }
 vec4 samplePoster(vec2 p) { return texture2D(u_Poster, p / vec2(1080.0,2400.0)); }
@@ -32,7 +33,7 @@ void main() {
       color = samplePoster(vec2(745.0+(p.x-416.0)*8.0/174.0,p.y));
     vec2 q = abs(p-vec2(542.5,2067.0))-vec2(372.5,0.0);
     if (length(max(q,0.0)) <= 41.0) {
-      bool filled = p.x <= 129.0+827.0*u_Progress;
+      bool filled = p.x <= u_FillEnd;
       color = u_HasPoster > 0.5 ? samplePoster(vec2((filled ? 250.0 : 800.0)+(p.x-129.0)*8.0/827.0,p.y))
         : (filled ? vec4(0.43,0.76,0.48,1.0) : vec4(0.81,0.85,0.83,1.0));
     }
@@ -44,7 +45,7 @@ void main() {
 }`;
 
 /** Platform-owned renderer. It gives up the canvas synchronously before Cocos draws its poster. */
-function wechatScreen(Progress, fragment) {
+function wechatScreen(Progress, fragment, geometry) {
   const window = GameGlobal;
   const progress = new Progress();
   let gl, program, texture, buffer, vao, vaoApi, position;
@@ -77,6 +78,7 @@ function wechatScreen(Progress, fragment) {
     gl.uniform1i(gl.getUniformLocation(program,'u_Poster'),0);
     gl.uniform2f(gl.getUniformLocation(program,'u_Size'),window.canvas.width,window.canvas.height);
     gl.uniform1f(gl.getUniformLocation(program,'u_Progress'),progress.value);
+    gl.uniform1f(gl.getUniformLocation(program,'u_FillEnd'),129+geometry(progress.value).fillPixels);
     gl.uniform1f(gl.getUniformLocation(program,'u_HasPoster'),hasPoster ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
     if (vaoApi) vaoApi.bindVertexArrayOES(old.vao);
@@ -158,10 +160,10 @@ function wechatScreen(Progress, fragment) {
   return { start,end,attach,setProgress,getProgress:()=>progress.value,getTarget:()=>progress.target,isEnded:()=>stopped };
 }
 
-export const WECHAT_STARTUP_SOURCE = `// Offwork startup renderer v2: single canvas owner, live progress.\nmodule.exports = (${wechatScreen.toString()})(${LoadingProgress.toString()},${JSON.stringify(STARTUP_FRAGMENT)});\n`;
+export const WECHAT_STARTUP_SOURCE = `// Offwork startup renderer v2: single canvas owner, live progress.\nmodule.exports = (${wechatScreen.toString()})(${LoadingProgress.toString()},${JSON.stringify(STARTUP_FRAGMENT)},${loadingBarGeometry.toString()});\n`;
 
 /** Browser cover uses the same crop/contour as the native poster. */
-function browserScreen(Progress, contour) {
+function browserScreen(Progress, contour, geometry) {
   const cover = document.getElementById('startup-cover');
   const canvas = cover.querySelector('canvas'), context = canvas.getContext('2d');
   const image = new Image(), progress = new Progress(); let ready = false, stopped = false, raf, previous = 0;
@@ -182,8 +184,9 @@ function browserScreen(Progress, contour) {
       context.arcTo(956,2108,915,2108,41);context.lineTo(170,2108);context.arcTo(129,2108,129,2067,41);
       context.arcTo(129,2026,170,2026,41);context.closePath();context.clip();
       context.drawImage(image,800,2026,8,82,129,2026,827,82);
-      if(p>0)context.drawImage(image,250,2026,8*p,82,129,2026,827*p,82);
-      context.restore();context.save();context.translate(129+659*p-420,0);context.beginPath();
+      const bar=geometry(p);
+      context.drawImage(image,250,2026,8,82,129,2026,bar.fillPixels,82);
+      context.restore();context.save();context.translate(bar.fishLeft-420,0);context.beginPath();
       contour.forEach(([x,y],i)=>i?context.lineTo(x,y):context.moveTo(x,y));context.closePath();context.clip();
       context.drawImage(image,420,2004,168,130,420,2004,168,130);context.restore();
     }
@@ -195,4 +198,4 @@ function browserScreen(Progress, contour) {
   image.onload=()=>{ready=true;};image.src='loading-cover.jpg';raf=requestAnimationFrame(draw);
 }
 
-export const BROWSER_STARTUP_SOURCE = `(${browserScreen.toString()})(${LoadingProgress.toString()},${JSON.stringify(FISH_CONTOUR)});`;
+export const BROWSER_STARTUP_SOURCE = `(${browserScreen.toString()})(${LoadingProgress.toString()},${JSON.stringify(FISH_CONTOUR)},${loadingBarGeometry.toString()});`;

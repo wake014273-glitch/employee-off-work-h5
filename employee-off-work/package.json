@@ -7,7 +7,7 @@
     "test:soak": "node --test tests/soak.test.mjs",
     "qa": "node scripts/qa-playthrough.mjs",
     "qa:wechat": "node scripts/qa-wechat.mjs",
-    "build:web": "node scripts/build.mjs web-mobile",
+    "build:web": "node scripts/build.mjs web-mobile false",
     "build:wechat": "node scripts/build.mjs wechatgame false appid=wxcefa299717fbb2da",
     "audit:size": "node scripts/report-build-size.mjs wechatgame"
   },

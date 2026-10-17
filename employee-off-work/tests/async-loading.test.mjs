@@ -1,6 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LoadingProgress, retryLoad } from '../assets/scripts/model/AsyncLoading.ts';
+import { LoadingProgress, retryLoad, loadingBarGeometry } from '../assets/scripts/model/AsyncLoading.ts';
+import { FISH_CONTOUR } from '../scripts/startup-screen.mjs';
+
+test('the fill edge is covered by the opaque fish body across every track row at every percentage', () => {
+  const inside=(x,y)=>{
+    let hit=false;
+    FISH_CONTOUR.forEach(([ax,ay],i)=>{const [bx,by]=FISH_CONTOUR[(i+FISH_CONTOUR.length-1)%FISH_CONTOUR.length];
+      if((ay>y)!==(by>y)&&x<(bx-ax)*(y-ay)/(by-ay)+ax)hit=!hit;});
+    return hit;
+  };
+  for(let percent=0;percent<=100;percent++){
+    const bar=loadingBarGeometry(percent/100),edge=129+bar.fillPixels;
+    for(let y=2027;y<=2107;y++)assert.ok(inside(edge-bar.fishLeft+420,y),`${percent}% at row ${y}`);
+    assert.ok(bar.fillPixels>=0&&bar.fillPixels<=827);
+  }
+  assert.deepEqual(loadingBarGeometry(NaN),loadingBarGeometry(0));
+  assert.deepEqual(loadingBarGeometry(-1),loadingBarGeometry(0));
+  assert.deepEqual(loadingBarGeometry(2),loadingBarGeometry(1));
+});
 
 test('resource loader recovers a transient failure with one completed result', async () => {
   let attempts = 0; const retries = [];

@@ -2,6 +2,13 @@ type Completion<T> = (error: Error | null, value?: T | null) => void;
 type LoadOptions = { label: string; attempts?: number; timeoutMs?: number; delayMs?: number;
   onRetry?: (attempt: number) => void; isCurrent?: () => boolean };
 
+/** Keep the fill's vertical edge inside the opaque fish body, including at 100%. */
+export function loadingBarGeometry(value: number) {
+  const progress = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+  const fishLeft = 129 + 659 * progress;
+  return { fishLeft, fillPixels: fishLeft + 84 - 129 };
+}
+
 /** Smooth completed work and carry the displayed value across the platform/scene handoff. */
 export class LoadingProgress {
   value = 0;

@@ -70,7 +70,7 @@ type PickupFlight = { x: number; y: number; segment: number; life: number };
 @ccclass('GameMain')
 export class GameMain extends Component {
   // Updated by scripts/build.mjs and checked against the compiled game bundle.
-  readonly buildFingerprint = 'source:5f07a47b3b94efe4';
+  readonly buildFingerprint = 'source:587580702cd604d5';
   private fieldHeight = DESIGN_HEIGHT;
   private visualDt = 0;
   private hintPaper!: Graphics;
@@ -536,8 +536,9 @@ export class GameMain extends Component {
           this.syncArt();
         }
       };
-      // Limit concurrent image decoding on phones; audio follows critical visuals.
-      await Promise.all([load(), load()]);
+      // Four bounded workers overlap network latency without flooding phone decoders.
+      // Audio still follows the critical visuals.
+      await Promise.all([load(), load(), load(), load()]);
       if (!current()) return;
       if (!this.immunityMaterial) {
         const effect = await retryLoad<EffectAsset>(done => bundle.load('effects/immunity-silhouette', EffectAsset, done),

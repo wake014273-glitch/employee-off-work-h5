@@ -3,6 +3,7 @@ import { DESIGN_WIDTH, formatClock, HUD_SAFE_HEIGHT, tutorialRewardPosition, tut
 import type { PlayerProgress, Settlement, TutorialGuide } from './model/GameExperience';
 import { TUTORIAL_COPY } from './model/GameExperience';
 import { sliceFrame } from './FinalArtHud';
+import { loadingBarGeometry } from './model/AsyncLoading';
 import type { Point } from './model/GameModel';
 import { OfficeSkin } from './OfficeSkin';
 import { GUIDE_PAGES, GuidePage } from './model/GuideCatalog';
@@ -765,8 +766,9 @@ export class GameInterface {
     this.loadingCanvas.setScale(posterScale, posterScale);
     const backdrop = this.loadingBackdrop; backdrop.clear(); backdrop.fillColor = new Color(32, 44, 80);
     backdrop.rect(-DESIGN_WIDTH / 2, -this.fieldHeight / 2, DESIGN_WIDTH, this.fieldHeight); backdrop.fill();
-    if (this.loadingFill.spriteFrame) this.loadingFill.fillRange = this.loadingProgress;
-    this.loadingFishMask.setPosition(129 + 84 + (827 - 168) * this.loadingProgress - 540, 1200 - 2069);
+    const bar = loadingBarGeometry(this.loadingProgress);
+    if (this.loadingFill.spriteFrame) this.loadingFill.fillRange = bar.fillPixels / 827;
+    this.loadingFishMask.setPosition(bar.fishLeft + 84 - 540, 1200 - 2069);
     this.loadingStatus.string = !failed && status.startsWith('正在') ? status : '';
     this.loadingStatus.node.active = this.loadingStatus.string.length > 0;
     this.loadingStatus.color = INK.clone();

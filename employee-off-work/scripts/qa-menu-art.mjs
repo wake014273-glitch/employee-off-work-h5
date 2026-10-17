@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { TUTORIAL_REVISION } from '../assets/scripts/model/GameExperience.ts';
+import { loadingBarGeometry } from '../assets/scripts/model/AsyncLoading.ts';
 
 const wechat = process.argv.includes('--wechat');
 const out = resolve(process.env.MENU_QA_OUT ?? 'temp/qa/menu-art'); mkdirSync(out, { recursive: true });
@@ -121,7 +122,7 @@ try {
   await shot('loading-35');
   await evaluate(`g.artLoadProgress=0.85;g.loadingProgress.reset(0.85);g.draw();return true;`); await shot('loading-85');
   checks.loading_poster_reports_progress_and_blocks_start = states.loading35.visible && !states.loading35.menu && states.loading35.progress === 0.35 && states.loading35.blocked === null && await evaluate('return u.loadingProgress===0.85;');
-  checks.single_original_bar_and_fish_follow_actual_progress = !states.loading35.duplicatedPanel&&states.loading35.source&&Math.abs(states.loading35.fill-0.35)<0.0001&&await evaluate('return Math.abs(u.loadingFill.fillRange-0.85)<0.0001;');
+  checks.single_original_bar_and_fish_follow_actual_progress = !states.loading35.duplicatedPanel&&states.loading35.source&&Math.abs(states.loading35.fill-loadingBarGeometry(0.35).fillPixels/827)<0.0001&&await evaluate('return Math.abs(129+u.loadingFill.fillRange*827-(u.loadingFishMask.position.x+540))<0.0001;');
   await evaluate(`g.artLoadFailed=true;g.artLoadStatus='重新加载';g.draw();return true;`);
   await shot('loading-retry'); await tapPrimary();
   for (let i = 0; i < 20 && !await evaluate('if(!g.artReady)cc.director.tick(0);return g.artReady;'); i++) await sleep(250);
