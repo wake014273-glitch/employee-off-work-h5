@@ -50,6 +50,33 @@ System.register([], function (_export, _context) {
                 }
               }
             }).then(function () {
+              // Report the actual subpackage download while the bootstrap owns the canvas.
+              return new Promise(function (resolve) {
+                var finished = false;
+                var startup = cc.game.__offworkStartup || globalThis.__offworkStartup;
+                function report(value) { if (!finished && startup) startup.setProgress(value); }
+                report(0.18);
+                var timer = setTimeout(function () { complete(new Error('Art prefetch timed out')); }, 45000);
+                function complete(error) {
+                  if (finished) return;
+                  finished = true;
+                  clearTimeout(timer);
+                  if (error) console.warn('[startup] Loading art prefetch failed', error);
+                  resolve();
+                }
+                cc.assetManager.loadBundle('art', { onFileProgress: function (event) {
+                  if (Number.isFinite(event.progress)) report(0.18 + Math.max(0,Math.min(100,event.progress))*0.0052);
+                } }, function (error, bundle) {
+                  if (finished) return;
+                  if (error || !bundle) return complete(error || new Error('Art bundle unavailable'));
+                  report(0.7);
+                  bundle.load('menus/loading/spriteFrame', cc.SpriteFrame, function (frameError) {
+                    if (!frameError) report(0.71);
+                    complete(frameError);
+                  });
+                });
+              });
+            }).then(function () {
               return cc.game.run();
             });
           }
