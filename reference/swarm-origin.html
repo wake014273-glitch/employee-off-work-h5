@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<title>SWARM ORIGIN · 剧情弹幕（竖屏）</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#05060c;overflow:hidden;}
+  body{font-family:system-ui,"Microsoft YaHei","PingFang SC",sans-serif;
+       -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{display:block;touch-action:none;border-radius:6px;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
+<script>
+(function(){
+'use strict';
+
+/* ============================ 画布 ============================ */
+const W = 450, H = 800, PR = 7;
+const cvs = document.getElementById('game');
+cvs.width = W; cvs.height = H;
+const ctx = cvs.getContext('2d');
+function fit(){
+  const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+  cvs.style.width = (W * s) + 'px';
+  cvs.style.height = (H * s) + 'px';
+}
+fit(); window.addEventListener('resize', fit);
+
+const FONT = 'system-ui,"Microsoft YaHei","PingFang SC",sans-serif';
+const MONO = 'ui-monospace,Consolas,monospace';
+const rand  = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const lerp  = (a, b, t) => a + (b - a) * t;
+
+/* ============================ 音效 ============================ */
+let actx = null, muted = false;
+function audio(){
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
+  if (actx && actx.state === 'suspended') { try { actx.resume(); } catch (e) {} }
+  return actx;
+}
+function sfx(freq, dur, type, vol, slideTo){
+  if (muted) return;
+  const a = audio(); if (!a) return;
+  try {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, a.currentTime);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, a.currentTime + dur);
+    g.gain.setValueAtTime(vol || 0.04, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime + dur);
+  } catch (e) {}
+}
+
+/* ============================ 剧情 / 关卡配置 ============================ */
+/* objective: survive | reach | escort   —— 每一段剧情都改变一条玩法规则 */
+const LEVELS = [
+  { name:'出发', objective:'survive', dur:30,
+    intro:'城市边缘，第一波蜂群抵达。', outro:'你活下来了，电网却断了。',
+    tip:'拖动躲避 · 擦弹充能 · 轻触屏幕释放脉冲',
+    from:'top', rate:2.9, ramp:0.85, spMin:98, spMax:132, aim:0.16, hue:190, vision:Infinity },
+
+  { name:'断电', objective:'reach', dur:42,
+    intro:'黑暗里，你学会折叠自己。', outro:'穿过黑暗，你听见有人呼救。',
+    tip:'视野只剩一圈 · 相位冲刺可穿过弹幕墙（右下按钮 / Shift）',
+    from:'topwall', rate:3.0, ramp:1.0, spMin:120, spMax:165, aim:0.25, hue:206, tag:'视野受限 · 弹幕墙',
+    vision:155, visionEnd:120, wallEvery:4.4, unlockDash:true },
+
+  { name:'同路人', objective:'escort', dur:25,
+    intro:'有人还活着，别丢下他。', outro:'他把一枚共振核心交到你手里。',
+    tip:'护住同行者 · 脉冲会为他修补外壳',
+    from:'aimed', rate:4.2, ramp:0.9, spMin:120, spMax:172, aim:0.52, hue:280, vision:Infinity, npc:true },
+
+  { name:'逆流', objective:'survive', dur:30,
+    intro:'时间开始倒着走。', outro:'逆流尽头，是它的巢。',
+    tip:'弹幕自下而上 · 擦弹收益翻倍 · 提防时间反转',
+    from:'bottom', rate:4.0, ramp:0.8, spMin:130, spMax:190, aim:0.30, hue:320, vision:Infinity,
+    reverse:true, grazeMul:2, tag:'弹幕逆流 · 擦弹双倍' },
+
+  { name:'坍塌', objective:'survive', dur:20,
+    intro:'退路在崩塌，往前冲。', outro:'你冲出了巢。天亮了。',
+    tip:'走廊正在收窄 · 弹幕更快更密',
+    from:'corridor', rate:6.0, ramp:0.9, spMin:175, spMax:235, aim:0.45, hue:44, vision:Infinity, corridor:true, tag:'走廊收窄' }
+];
+
+/* ============================ 强化池（确定性自选，非抽奖） ============================ */
+const POOL = [
+  { id:'dashcd',  name:'相位冷却', desc:'冲刺冷却 -28%',        max:3, hue:186 },
+  { id:'pulse',   name:'脉冲半径', desc:'脉冲范围 +35%',        max:3, hue:200 },
+  { id:'graze',   name:'危险感知', desc:'擦弹充能 +45%',        max:3, hue:280 },
+  { id:'speed',   name:'轻量化',   desc:'移动响应 +22%',        max:3, hue:150 },
+  { id:'slow',    name:'时间锚',   desc:'弹幕速度 -12%',        max:3, hue:45  },
+  { id:'shield',  name:'备用外壳', desc:'护盾上限 +1（立即回满）', max:1, hue:0   }
+];
+const upgrades = {};
+function up(id){ return upgrades[id] || 0; }
+let pending = null, cards = [], cardHit = [];
+
+/* ============================ 运行时状态 ============================ */
+let state = 'title';            // title | intro | play | clear | choice | fail | ending
+let levelIdx = 0;
+let tGlobal = 0, ambientT = 0;
+let score = 0, bestScore = 0, kills = 0, grazes = 0;
+let shields = 3, maxShields = 3;
+let energy = 0.35;
+let timeLeft = 0, durLeft = 0, progress = 0;
+let spawnAcc = 0, graceT = 0, rampT = 0, wallT = 0, revT = 0, revWarn = 0, revOn = 0;
+let dashCd = 0, dashInvuln = 0, dashT = 0, dashDur = 0;
+let invuln = 0, shake = 0, flash = 0, hitPause = 0;
+let combo = 0, comboT = 0, scoreAcc = 0, annT = 0, annText = '', annHue = 190;
+let dead = false, failReason = '';
+let corridorGap = 340;
+
+const player = { x: W / 2, y: H - 190 };
+const target = { x: W / 2, y: H - 190 };
+let look = { x: 0, y: -1 };
+let trail = [], bullets = [], particles = [], rings = [], floaters = [], stars = [], walls = [];
+let npc = null, exitGate = null;
+const dashFx = { x1: 0, y1: 0, x2: 0, y2: 0, t: 0, hue: 190 };
+
+for (let i = 0; i < 64; i++) stars.push({ x: rand(0, W), y: rand(0, H), z: rand(0.2, 1), sp: rand(6, 26) });
+
+try { bestScore = parseInt(localStorage.getItem('so_best') || '0', 10) || 0; } catch (e) { bestScore = 0; }
+
+/* ============================ 背景缓存 ============================ */
+const bg = document.createElement('canvas');
+bg.width = W; bg.height = H;
+(function paintBg(){
+  const c = bg.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0a1122'); g.addColorStop(0.5, '#070a14'); g.addColorStop(1, '#04050a');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  let rg = c.createRadialGradient(W / 2, H + 80, 20, W / 2, H + 80, 520);
+  rg.addColorStop(0, 'rgba(70,150,255,0.18)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = rg; c.fillRect(0, 0, W, H);
+  rg = c.createRadialGradient(W / 2, -120, 20, W / 2, -120, 560);
+  rg.addColorStop(0, 'rgba(130,70,230,0.16)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = rg; c.fillRect(0, 0, W, H);
+  c.strokeStyle = 'rgba(90,150,255,0.05)'; c.lineWidth = 1;
+  for (let x = 0; x <= W; x += 30) { c.beginPath(); c.moveTo(x + .5, 0); c.lineTo(x + .5, H); c.stroke(); }
+  for (let y = 0; y <= H; y += 30) { c.beginPath(); c.moveTo(0, y + .5); c.lineTo(W, y + .5); c.stroke(); }
+})();
+
+/* ============================ 工具 ============================ */
+function rr(c, x, y, w, h, r){
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+function glowText(txt, x, y, size, hue, align, weight, alpha){
+  ctx.save();
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = (weight || 700) + ' ' + size + 'px ' + FONT;
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.shadowColor = 'hsl(' + hue + ',100%,60%)';
+  ctx.shadowBlur = size * 0.55;
+  ctx.fillStyle = 'hsl(' + hue + ',100%,70%)';
+  ctx.fillText(txt, x, y);
+  ctx.shadowBlur = 0;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#f2fbff';
+  ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+function burst(x, y, hue, n, pow){
+  for (let i = 0; i < n; i++){
+    const a = rand(0, 6.2832), s = rand(30, pow);
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: 0, life: rand(0.25, 0.7), hue, size: rand(1.6, 3.6) });
+  }
+  if (particles.length > 700) particles.splice(0, particles.length - 700);
+}
+function ring(x, y, hue, big){ rings.push({ x, y, t: 0, life: big ? 0.6 : 0.4, hue, r0: big ? 12 : 5, r1: big ? 120 : 48 }); }
+function floater(x, y, text, hue, size){ floaters.push({ x, y, text, hue, size: size || 16, t: 0, life: 0.9 }); }
+function announce(text, hue){ annText = text; annHue = hue; annT = 1.4; }
+
+/* ============================ 关卡装载 ============================ */
+function startLevel(i, skipIntro){
+  levelIdx = i;
+  const L = LEVELS[i];
+  bullets.length = 0; particles.length = 0; rings.length = 0; floaters.length = 0; walls.length = 0;
+  trail.length = 0;
+  shields = maxShields;
+  energy = 0.35;
+  dashCd = 0; invuln = 1.2; dashT = 0; dashInvuln = 0;
+  progress = 0; rampT = 0; spawnAcc = 0; wallT = 1.5; revT = 0; revOn = 0; revWarn = 0;
+  graceT = 2.0;                 // 开场宽限：前 2 秒不生成弹幕
+  dead = false; failReason = '';
+  corridorGap = 340;
+  player.x = W / 2; player.y = H - 190;
+  target.x = player.x; target.y = player.y;
+  look.x = 0; look.y = -1;
+
+  durLeft = L.dur;
+  if (L.objective === 'reach'){
+    exitGate = { x: rand(95, W - 95), y: 132, r: 28, dist0: 1, t: 0 };
+    exitGate.dist0 = Math.hypot(player.x - exitGate.x, player.y - exitGate.y);
+  } else exitGate = null;
+
+  if (L.npc){
+    npc = { x: player.x, y: player.y - 70, hp: 100, maxhp: 100, r: 12, hitT: 0 };
+  } else npc = null;
+
+  announce(L.name, 190);
+  state = skipIntro ? 'play' : 'intro';
+  sfx(600, 0.12, 'sine', 0.05, 900);
+}
+function openChoices(){
+  const avail = [];
+  for (let i = 0; i < POOL.length; i++) if (up(POOL[i].id) < POOL[i].max) avail.push(POOL[i]);
+  pending = [];
+  while (pending.length < 3 && avail.length > 0){
+    pending.push(avail.splice((Math.random() * avail.length) | 0, 1)[0]);
+  }
+  cardHit = [];
+  for (let i = 0; i < pending.length; i++) cardHit.push({ x: 40, y: 300 + i * 130, w: W - 80, h: 112 });
+  state = 'choice';
+}
+function applyUpgrade(item){
+  upgrades[item.id] = up(item.id) + 1;
+  if (item.id === 'shield'){ maxShields += 1; shields = maxShields; }
+  announce(item.name, item.hue);
+  flash = 0.25;
+  sfx(760, 0.14, 'triangle', 0.05, 1180);
+  if (levelIdx + 1 < LEVELS.length){ startLevel(levelIdx + 1, false); }
+  else { state = 'ending'; if (score > bestScore){ bestScore = score; try { localStorage.setItem('so_best', String(bestScore)); } catch (e) {} } }
+}
+function levelClear(){
+  score += 1000;
+  if (score > bestScore){ bestScore = score; try { localStorage.setItem('so_best', String(bestScore)); } catch (e) {} }
+  burst(player.x, player.y, 150, 30, 300);
+  ring(player.x, player.y, 150, true);
+  sfx(880, 0.22, 'sine', 0.06, 1320);
+  state = 'clear';
+}
+function playerHit(force){
+  if (!force && (invuln > 0 || dashInvuln > 0)) return;
+  shields--;
+  invuln = 1.6; combo = 0;
+  shake = 12; flash = 0.5; hitPause = 0.07;
+  burst(player.x, player.y, 0, 26, 280);
+  sfx(180, 0.35, 'sawtooth', 0.06, 90);
+  if (shields <= 0){
+    shields = 0;
+    dead = true; failReason = '核心破碎';
+    state = 'fail';
+  }
+}
+function doPulse(){
+  const R = 95 * (1 + 0.35 * up('pulse'));
+  if (energy < 0.5) return;
+  energy -= 0.5;
+  invuln = Math.max(invuln, 0.28);
+  let n = 0;
+  for (let i = bullets.length - 1; i >= 0; i--){
+    const b = bullets[i];
+    if (Math.hypot(b.x - player.x, b.y - player.y) < R){
+      burst(b.x, b.y, b.hue, 5, 130);
+      bullets.splice(i, 1); n++;
+    }
+  }
+  score += n * 30;
+  if (npc && Math.hypot(npc.x - player.x, npc.y - player.y) < R + 40){
+    npc.hp = Math.min(npc.maxhp, npc.hp + 9);
+    floater(npc.x, npc.y - 36, '外壳修复', 150, 14);
+  }
+  if (n > 0) floater(player.x, player.y - 30, '脉冲 -' + n, 200, 17);
+  ring(player.x, player.y, 200, true);
+  shake = Math.min(shake + 5, 10);
+  sfx(520, 0.2, 'triangle', 0.05, 240);
+}
+function doDash(){
+  const cd = 2.6 * Math.pow(0.72, up('dashcd'));
+  if (dashCd > 0 || state !== 'play') return;
+  const len = Math.hypot(look.x, look.y) || 1;
+  const dx = look.x / len, dy = look.y / len;
+  dashFx.x1 = player.x; dashFx.y1 = player.y;
+  dashFx.x2 = clamp(player.x + dx * 128, 14, W - 14);
+  dashFx.y2 = clamp(player.y + dy * 128, 14, H - 14);
+  dashFx.t = 0.22; dashFx.hue = 186;
+  player.x = dashFx.x2; player.y = dashFx.y2;
+  target.x = player.x; target.y = player.y;
+  dashCd = cd; dashInvuln = 0.5;
+  burst(player.x, player.y, 186, 18, 220);
+  sfx(320, 0.16, 'sawtooth', 0.05, 980);
+}
+
+/* ============================ 弹幕生成 ============================ */
+function spawnBullet(x, y, vx, vy, r, hue){
+  bullets.push({ x, y, vx, vy, r, hue, grazed: false, spin: rand(-3, 3) });
+}
+function makeBullet(x, y, speed, L, hue){
+  let vx = rand(-16, 16), vy = 0;
+  if (Math.random() < L.aim){
+    const dx = player.x - x, dy = player.y - y, d = Math.hypot(dx, dy) || 1;
+    vx = dx / d * speed * 0.95; vy = dy / d * speed * 0.95;
+  } else {
+    vy = (L.from === 'bottom' ? -speed : speed);
+  }
+  spawnBullet(x, y, vx, vy, rand(5, 7), hue + rand(-14, 14));
+}
+function spawnWave(L){
+  const gapX = rand(70, W - 70), gapHalf = 46;
+  for (let x = 10; x <= W - 10; x += 24){
+    if (Math.abs(x - gapX) < gapHalf) continue;
+    spawnBullet(x, -14, 0, 150, 7.5, 200);
+  }
+  floater(gapX, 92, '缺口', 200, 14);
+  sfx(240, 0.2, 'square', 0.04);
+}
+function spawner(dt, L){
+  if (graceT > 0){ graceT -= dt; return; }
+  const p = clamp(rampT / L.dur, 0, 1);
+  const rate = L.rate * (1 + L.ramp * p);
+  spawnAcc += rate * dt;
+  let guard = 0;
+  while (spawnAcc >= 1 && guard++ < 14){
+    spawnAcc -= 1;
+    const hue = L.hue;
+    if (L.from === 'bottom'){
+      if (Math.random() < 0.62) makeBullet(rand(16, W - 16), H + 12, rand(L.spMin, L.spMax), L, hue);
+      else {
+        const left = Math.random() < 0.5;
+        const x = left ? -12 : W + 12;
+        const y = rand(H * 0.35, H - 20);
+        const sp = rand(L.spMin, L.spMax) * 0.85;
+        spawnBullet(x, y, left ? sp : -sp, -sp * 0.55, 6, hue + rand(-14, 14));
+      }
+    } else if (L.from === 'corridor'){
+      const half = corridorGap / 2;
+      makeBullet(clamp(rand(W / 2 - half + 14, W / 2 + half - 14), 14, W - 14), -12, rand(L.spMin, L.spMax), L, hue);
+    } else {
+      makeBullet(rand(16, W - 16), -12, rand(L.spMin, L.spMax), L, hue);
+    }
+  }
+  if (L.from === 'topwall'){
+    wallT -= dt;
+    if (wallT <= 0){ wallT = L.wallEvery; spawnWave(L); }
+  }
+  if (L.reverse){
+    if (revOn > 0){
+      revOn -= dt; revWarn = 0;
+      if (revOn <= 0){ revT = 7.5; }
+    } else if (revWarn > 0){
+      revWarn -= dt;
+      if (revWarn <= 0){
+        revOn = 1.4; shake = Math.max(shake, 6); flash = 0.25;
+        for (let i = 0; i < bullets.length; i++){ bullets[i].vy = -bullets[i].vy; bullets[i].vx = -bullets[i].vx * 0.6; }
+        ring(player.x, player.y, 320, true);
+        announce('时间反转', 320);
+        sfx(700, 0.4, 'sine', 0.05, 180);
+      }
+    } else {
+      revT -= dt;
+      if (revT <= 0){ revWarn = 0.7; floater(player.x, player.y - 60, '时间将要反转', 320, 15); }
+    }
+  }
+  if (L.corridor){
+    corridorGap = lerp(340, 150, clamp(rampT / L.dur, 0, 1));
+  }
+}
+
+/* ============================ 物理步进 ============================ */
+function stepBullets(dt, L){
+  const slow = 1 - 0.12 * up('slow');
+  const grazeR = 13 * (1 + 0.45 * up('graze'));
+  for (let i = bullets.length - 1; i >= 0; i--){
+    const b = bullets[i];
+    b.x += b.vx * dt * slow; b.y += b.vy * dt * slow;
+    if (b.x < -40 || b.x > W + 40 || b.y < -60 || b.y > H + 60){ bullets.splice(i, 1); continue; }
+    if (L.corridor && Math.abs(b.x - W / 2) > corridorGap / 2 + 10){
+      burst(b.x, b.y, L.hue, 4, 120); bullets.splice(i, 1); continue;
+    }
+
+    const d = Math.hypot(b.x - player.x, b.y - player.y);
+    if (d < b.r + PR){
+      if (dashInvuln > 0 || invuln > 0){
+        burst(b.x, b.y, 186, 6, 160); bullets.splice(i, 1); score += 12; kills++;
+        continue;
+      }
+      burst(b.x, b.y, 0, 10, 200);
+      bullets.splice(i, 1);
+      playerHit(false);
+      continue;
+    }
+    if (!b.grazed && d < b.r + PR + grazeR){
+      b.grazed = true;
+      const mul = L.grazeMul || 1;
+      energy = Math.min(1, energy + 0.055 * (1 + 0.45 * up('graze')) * mul);
+      combo++; comboT = 1.6; grazes++;
+      score += Math.round(25 * mul * (1 + Math.min(combo, 20) * 0.05));
+      if (combo % 4 === 0) floater(player.x, player.y - 26, '擦弹 x' + combo, 320, 14);
+      sfx(1180 + Math.min(combo, 12) * 30, 0.04, 'square', 0.02);
+    }
+  }
+  if (npc){
+    for (let i = bullets.length - 1; i >= 0; i--){
+      const b = bullets[i];
+      if (Math.hypot(b.x - npc.x, b.y - npc.y) < b.r + npc.r){
+        bullets.splice(i, 1);
+        npc.hp -= 7; npc.hitT = 0.25;
+        burst(npc.x, npc.y, 280, 8, 170);
+        shake = Math.max(shake, 4);
+        sfx(220, 0.14, 'triangle', 0.04);
+        if (npc.hp <= 0){ npc.hp = 0; failReason = '同行者倒下了'; state = 'fail'; }
+      }
+    }
+  }
+}
+function step(dt){
+  const L = LEVELS[levelIdx];
+  rampT += dt;
+  if (comboT > 0){ comboT -= dt; if (comboT <= 0) combo = 0; }
+  if (dashCd > 0) dashCd = Math.max(0, dashCd - dt);
+  if (invuln > 0) invuln = Math.max(0, invuln - dt);
+  if (dashInvuln > 0) dashInvuln = Math.max(0, dashInvuln - dt, 0);
+  if (dashFx.t > 0) dashFx.t = Math.max(0, dashFx.t - dt);
+  energy = Math.min(1, energy + 0.05 * dt);
+
+  // 移动：手指相对拖动 → 平滑跟随
+  const k = 1 - Math.exp(-(15 + 3.3 * up('speed')) * dt);
+  player.x += (target.x - player.x) * k;
+  player.y += (target.y - player.y) * k;
+  const lock = (L.objective === 'reach') ? 12 : 12;
+  player.x = clamp(player.x, lock, W - lock);
+  player.y = clamp(player.y, lock + 46, H - lock);
+  if (L.corridor){
+    const half = corridorGap / 2;
+    player.x = clamp(player.x, W / 2 - half + PR, W / 2 + half - PR);
+  }
+  const dx = player.x - (trail.length ? trail[trail.length - 1].x : player.x);
+  const dy = player.y - (trail.length ? trail[trail.length - 1].y : player.y);
+  if (Math.hypot(dx, dy) > 0.6) { look.x = dx; look.y = dy; }
+  trail.push({ x: player.x, y: player.y });
+  if (trail.length > 16) trail.shift();
+
+  if (npc){
+    const nk = 1 - Math.exp(-2.1 * dt);
+    npc.x += (player.x - npc.x) * nk;
+    npc.y += (player.y - 62 - npc.y) * nk;
+    npc.x = clamp(npc.x, 14, W - 14); npc.y = clamp(npc.y, 60, H - 14);
+    if (npc.hitT > 0) npc.hitT -= dt;
+  }
+  if (exitGate) exitGate.t += dt;
+
+  spawner(dt, L);
+  stepBullets(dt, L);
+
+  // 目标判定
+  if (L.objective === 'survive' || L.objective === 'escort'){
+    durLeft -= dt;
+    progress = clamp(1 - durLeft / L.dur, 0, 1);
+    if (durLeft <= 0){
+      if (L.objective === 'escort' && npc && npc.hp <= 0) { failReason = '同行者倒下了'; state = 'fail'; }
+      else levelClear();
+    }
+  } else if (L.objective === 'reach'){
+    durLeft -= dt;
+    const d = Math.hypot(player.x - exitGate.x, player.y - exitGate.y);
+    progress = clamp(1 - d / exitGate.dist0, 0, 1);
+    if (d < exitGate.r){ levelClear(); }
+    else if (durLeft <= 0){ failReason = '没能在黑暗中抵达出口'; state = 'fail'; }
+  }
+  scoreAcc += dt;
+  if (scoreAcc >= 1){ scoreAcc -= 1; score += 10; }
+}
+
+/* ============================ 环境层（暂停/结算时仍在动） ============================ */
+function ambient(dt){
+  tGlobal += dt; ambientT += dt;
+  for (let i = 0; i < stars.length; i++){
+    const s = stars[i];
+    s.y += s.sp * dt;
+    if (s.y > H + 4){ s.y = -4; s.x = rand(0, W); }
+  }
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.t += dt;
+    if (p.t >= p.life){ particles.splice(i, 1); continue; }
+    p.vy += 420 * dt;
+    p.vx *= Math.pow(0.32, dt); p.vy *= Math.pow(0.72, dt);
+    p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+  for (let i = rings.length - 1; i >= 0; i--){ rings[i].t += dt; if (rings[i].t >= rings[i].life) rings.splice(i, 1); }
+  for (let i = floaters.length - 1; i >= 0; i--){ floaters[i].t += dt; if (floaters[i].t >= floaters[i].life) floaters.splice(i, 1); }
+  if (annT > 0) annT = Math.max(0, annT - dt);
+  shake = Math.max(0, shake - shake * 7 * dt - 0.4 * dt);
+  if (flash > 0) flash = Math.max(0, flash - dt * 2.2);
+}
+
+/* ============================ 绘制 ============================ */
+function drawWalls(L){
+  if (!L.corridor) return;
+  const half = corridorGap / 2, lx = W / 2 - half, rx = W / 2 + half;
+  for (const side of [0, 1]){
+    const x0 = side === 0 ? 0 : rx, x1 = side === 0 ? lx : W;
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    if (side === 0){ g.addColorStop(0, 'rgba(50,30,10,0.92)'); g.addColorStop(1, 'rgba(120,80,20,0.35)'); }
+    else { g.addColorStop(0, 'rgba(120,80,20,0.35)'); g.addColorStop(1, 'rgba(50,30,10,0.92)'); }
+    ctx.fillStyle = g; ctx.fillRect(x0, 0, x1 - x0, H);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255,190,70,0.28)';
+    ctx.fillRect(side === 0 ? lx - 3 : rx - 1, 0, 4, H);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = 'rgba(255,214,110,0.55)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(side === 0 ? lx - 1 : rx + 1, 0); ctx.lineTo(side === 0 ? lx - 1 : rx + 1, H); ctx.stroke();
+  }
+}
+function drawExit(){
+  if (!exitGate) return;
+  const e = exitGate, pulse = 1 + Math.sin(e.t * 4) * 0.08;
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(e.x, e.y, 2, e.x, e.y, e.r * 2.6 * pulse);
+  g.addColorStop(0, 'rgba(150,255,220,0.85)');
+  g.addColorStop(0.35, 'rgba(80,255,190,0.28)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 2.6 * pulse, 0, 6.2832); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  for (let i = 0; i < 3; i++){
+    ctx.strokeStyle = 'hsla(' + (160 + i * 14) + ',100%,72%,' + (0.75 - i * 0.18) + ')';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, (e.r - i * 6) * pulse, e.t * (1 + i * 0.6), e.t * (1 + i * 0.6) + 4.4);
+    ctx.stroke();
+  }
+}
+function drawNpc(){
+  if (!npc) return;
+  const hurt = npc.hitT > 0;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = hurt ? 'rgba(255,90,90,0.35)' : 'rgba(190,120,255,0.28)';
+  ctx.beginPath(); ctx.arc(npc.x, npc.y, 26, 0, 6.2832); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.save();
+  ctx.translate(npc.x, npc.y); ctx.rotate(ambientT * 0.9);
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++){
+    const a = i / 6 * 6.2832, r = 12;
+    if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
+  ctx.fillStyle = hurt ? 'hsl(350,80%,26%)' : 'hsl(275,80%,24%)';
+  ctx.fill();
+  ctx.strokeStyle = hurt ? 'hsl(350,100%,72%)' : 'hsl(285,100%,74%)';
+  ctx.lineWidth = 1.8; ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = 'hsla(160,100%,70%,0.55)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(npc.x, npc.y, 18, -1.5708, -1.5708 + 6.2832 * (npc.hp / npc.maxhp)); ctx.stroke();
+}
+function drawPlayer(){
+  const blink = invuln > 0 && Math.floor(tGlobal * 14) % 2 === 0;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < trail.length; i++){
+    const p = trail[i], f = (i + 1) / trail.length;
+    ctx.fillStyle = 'hsla(190,100%,66%,' + (0.05 * f * f) + ')';
+    ctx.beginPath(); ctx.arc(p.x, p.y, PR * (0.3 + f * 1.05), 0, 6.2832); ctx.fill();
+  }
+  if (dashFx.t > 0){
+    ctx.strokeStyle = 'hsla(186,100%,75%,' + (dashFx.t / 0.22 * 0.75) + ')';
+    ctx.lineWidth = 5 * (dashFx.t / 0.22) + 1;
+    ctx.beginPath(); ctx.moveTo(dashFx.x1, dashFx.y1); ctx.lineTo(dashFx.x2, dashFx.y2); ctx.stroke();
+  }
+  const g = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, PR * 4.6);
+  g.addColorStop(0, 'rgba(180,250,255,0.95)');
+  g.addColorStop(0.3, 'rgba(90,220,255,0.42)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(player.x, player.y, PR * 4.6, 0, 6.2832); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  if (!blink){
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(player.x, player.y, PR, 0, 6.2832); ctx.fill();
+  }
+  ctx.strokeStyle = 'hsla(190,100%,80%,0.9)'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.arc(player.x, player.y, PR + 3.5, 0, 6.2832); ctx.stroke();
+  if (dashInvuln > 0){
+    ctx.strokeStyle = 'hsla(186,100%,85%,' + (dashInvuln / 0.5 * 0.8) + ')'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(player.x, player.y, 22 - dashInvuln * 12, 0, 6.2832); ctx.stroke();
+  }
+}
+function drawBullets(){
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < bullets.length; i++){
+    const b = bullets[i];
+    ctx.fillStyle = 'hsla(' + b.hue + ',100%,60%,0.30)';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 2.1, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = 'hsl(' + b.hue + ',95%,' + (b.grazed ? 74 : 52) + '%)';
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(b.x - b.r * 0.25, b.y - b.r * 0.25, b.r * 0.34, 0, 6.2832); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+function drawWorld(){
+  ctx.drawImage(bg, 0, 0);
+  for (let i = 0; i < stars.length; i++){
+    const s = stars[i];
+    ctx.fillStyle = 'rgba(150,205,255,' + (0.07 + s.z * 0.28) + ')';
+    ctx.fillRect(s.x, s.y, 1.3, 1.3 + s.z * 2.2);
+  }
+  drawWalls(LEVELS[levelIdx]);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < particles.length; i++){
+    const p = particles[i], f = 1 - p.t / p.life;
+    ctx.fillStyle = 'hsla(' + p.hue + ',100%,' + (55 + 30 * f) + '%,' + (0.85 * f) + ')';
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  for (let i = 0; i < rings.length; i++){
+    const r = rings[i], f = r.t / r.life;
+    ctx.strokeStyle = 'hsla(' + r.hue + ',100%,72%,' + (0.62 * (1 - f)) + ')';
+    ctx.lineWidth = 3 * (1 - f) + 0.4;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r0 + f * r.r1, 0, 6.2832); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  drawExit();
+  drawNpc();
+  drawBullets();
+  drawPlayer();
+  // 视野收窄（断电关）
+  const L = LEVELS[levelIdx];
+  if (state === 'play' || state === 'intro'){
+    const vis = L.vision === Infinity ? Infinity
+      : lerp(L.vision, L.visionEnd || L.vision, clamp(rampT / L.dur, 0, 1));
+    if (vis !== Infinity){
+      const g = ctx.createRadialGradient(player.x, player.y, vis * 0.45, player.x, player.y, vis);
+      g.addColorStop(0, 'rgba(3,4,8,0)');
+      g.addColorStop(0.72, 'rgba(3,4,8,0.55)');
+      g.addColorStop(1, 'rgba(3,4,8,0.97)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      if (exitGate){
+        const d = Math.hypot(exitGate.x - player.x, exitGate.y - player.y);
+        if (d > vis * 0.9){
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = 'rgba(150,255,220,' + (0.18 + 0.12 * Math.sin(ambientT * 3)) + ')';
+          ctx.beginPath(); ctx.arc(exitGate.x, exitGate.y, 9, 0, 6.2832); ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+        }
+      }
+    }
+  }
+  for (let i = 0; i < floaters.length; i++){
+    const f = floaters[i], k = f.t / f.life;
+    ctx.globalAlpha = 1 - k * k;
+    glowText(f.text, f.x, f.y - k * 44, f.size, f.hue, 'center', 700);
+    ctx.globalAlpha = 1;
+  }
+}
+function drawHUD(){
+  const L = LEVELS[levelIdx];
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = 0.94;
+  // 左：关卡名
+  ctx.textAlign = 'left';
+  ctx.font = '700 16px ' + FONT;
+  ctx.fillStyle = 'rgba(210,238,255,0.92)';
+  ctx.fillText('第' + (levelIdx + 1) + '关 · ' + L.name, 18, 24);
+  // 右：护盾
+  ctx.textAlign = 'right';
+  ctx.font = '600 11px ' + MONO;
+  ctx.fillStyle = 'rgba(150,195,255,0.55)';
+  ctx.fillText('SHELL', W - 18, 24);
+  for (let i = 0; i < maxShields; i++){
+    const x = W - 22 - i * 15, y = 46, on = i < shields;
+    ctx.beginPath(); ctx.arc(x, y, 4.6, 0, 6.2832);
+    if (on){ ctx.fillStyle = '#7ce7ff'; ctx.fill(); }
+    else { ctx.strokeStyle = 'rgba(140,180,220,0.35)'; ctx.lineWidth = 1.2; ctx.stroke(); }
+  }
+  // 目标条
+  ctx.textAlign = 'left';
+  const bw = W - 36;
+  ctx.fillStyle = 'rgba(20,30,50,0.7)';
+  rr(ctx, 18, 62, bw, 7, 4); ctx.fill();
+  ctx.fillStyle = L.objective === 'escort' ? 'rgba(190,120,255,0.9)' : (L.objective === 'reach' ? 'rgba(120,255,200,0.9)' : 'rgba(120,200,255,0.9)');
+  rr(ctx, 18, 62, Math.max(4, bw * progress), 7, 4); ctx.fill();
+  // 目标文字（与上面条带错开一行）
+  ctx.font = '600 12px ' + FONT;
+  ctx.fillStyle = 'rgba(180,215,255,0.8)';
+  let label = '';
+  if (L.objective === 'survive') label = '撑住 ' + Math.max(0, Math.ceil(durLeft)) + 's';
+  else if (L.objective === 'escort') label = '护送 · 同行者外壳 ' + Math.max(0, Math.round(npc ? npc.hp : 0)) + '%';
+  else if (L.objective === 'reach') {
+    const d = Math.round(Math.hypot(player.x - exitGate.x, player.y - exitGate.y));
+    label = '抵达出口 · ' + d + 'm' + (durLeft < 10 ? '  ⚠ ' + Math.ceil(durLeft) + 's' : '');
+  }
+  ctx.fillText(label, 18, 82);
+  if (L.tag){
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'hsla(' + L.hue + ',100%,78%,0.85)';
+    ctx.fillText(L.tag, W - 18, 82);
+    ctx.textAlign = 'left';
+  }
+
+  // 底部：擦弹能量条
+  const eFull = energy >= 0.5;
+  ctx.fillStyle = 'rgba(20,30,50,0.7)';
+  rr(ctx, 18, H - 28, 132, 9, 5); ctx.fill();
+  ctx.fillStyle = eFull ? 'rgba(255,205,90,0.95)' : 'rgba(90,170,220,0.75)';
+  rr(ctx, 18, H - 28, Math.max(4, 132 * energy), 9, 5); ctx.fill();
+  ctx.font = '600 10px ' + FONT;
+  ctx.fillStyle = eFull ? 'rgba(255,225,150,0.95)' : 'rgba(150,190,225,0.6)';
+  ctx.fillText(eFull ? '脉冲就绪（轻触释放）' : '擦弹充能中…', 18, H - 40);
+  ctx.fillStyle = 'rgba(150,195,255,0.5)';
+  ctx.fillText('SCORE ' + score, 158, H - 24);
+
+  // 右下：冲刺按钮（断电关解锁）
+  if (state === 'play'){
+    const cx = W - 54, cy = H - 54, R = 32;
+    const ready = dashCd <= 0 && (L.unlockDash || levelIdx > 1);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = ready ? 'rgba(90,220,255,0.16)' : 'rgba(90,120,160,0.08)';
+    ctx.beginPath(); ctx.arc(cx, cy, R + 6, 0, 6.2832); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = ready ? 'rgba(140,240,255,0.9)' : 'rgba(120,150,190,0.35)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.2832); ctx.stroke();
+    if (!ready){
+      const cdMax = 2.6 * Math.pow(0.72, up('dashcd'));
+      ctx.strokeStyle = 'rgba(255,200,120,0.85)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, R, -1.5708, -1.5708 + 6.2832 * (1 - dashCd / cdMax)); ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.font = '700 11px ' + FONT;
+    ctx.fillStyle = ready ? 'rgba(215,250,255,0.95)' : 'rgba(160,190,220,0.5)';
+    ctx.fillText('冲刺', cx, cy);
+  }
+  ctx.restore();
+}
+function cardPanel(x, y, w, h, hue, title, desc, tag){
+  ctx.fillStyle = 'rgba(8,14,26,0.92)';
+  rr(ctx, x, y, w, h, 12); ctx.fill();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = 'hsla(' + hue + ',100%,55%,0.10)';
+  rr(ctx, x - 3, y - 3, w + 6, h + 6, 14); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = 'hsla(' + hue + ',100%,68%,0.85)'; ctx.lineWidth = 1.6;
+  rr(ctx, x, y, w, h, 12); ctx.stroke();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.font = '700 20px ' + FONT;
+  ctx.fillStyle = 'hsl(' + hue + ',95%,76%)';
+  ctx.fillText(title, x + 20, y + 36);
+  ctx.font = '600 14px ' + FONT;
+  ctx.fillStyle = 'rgba(190,220,250,0.88)';
+  ctx.fillText(desc, x + 20, y + 68);
+  if (tag){
+    ctx.font = '600 11px ' + FONT;
+    ctx.fillStyle = 'rgba(150,190,225,0.55)';
+    ctx.fillText(tag, x + 20, y + h - 20);
+  }
+}
+function drawOverlay(){
+  const L = LEVELS[levelIdx];
+  if (state === 'title'){
+    ctx.fillStyle = 'rgba(4,6,12,0.62)'; ctx.fillRect(0, 0, W, H);
+    const bob = Math.sin(ambientT * 1.8) * 4;
+    glowText('SWARM ORIGIN', W / 2, 250 + bob, 34, 190);
+    glowText('剧情弹幕 · 竖屏原型', W / 2, 292, 15, 206, 'center', 600);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '600 14px ' + FONT;
+    ctx.fillStyle = 'rgba(195,225,255,0.85)';
+    ctx.fillText('每一段剧情，都会改写一条规则。', W / 2, 372);
+    ctx.fillStyle = 'rgba(160,200,240,0.7)';
+    ctx.fillText('拖动躲避 · 轻触脉冲 · 右下按钮冲刺', W / 2, 404);
+    for (let i = 0; i < LEVELS.length; i++){
+      ctx.fillStyle = 'rgba(140,180,220,0.72)';
+      ctx.textAlign = 'left';
+      ctx.fillText((i + 1) + '  ' + LEVELS[i].name + ' · ' + ({ survive:'生存', reach:'抵达', escort:'护送' })[LEVELS[i].objective], 120, 470 + i * 28);
+    }
+    ctx.textAlign = 'center';
+    ctx.font = '700 13px ' + MONO;
+    ctx.fillStyle = 'rgba(150,195,255,0.5)';
+    ctx.fillText('BEST ' + bestScore, W / 2, 630);
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(ambientT * 3.4);
+    ctx.font = '700 17px ' + FONT;
+    ctx.fillStyle = '#dff2ff';
+    ctx.fillText('轻触开始', W / 2, 700);
+    ctx.globalAlpha = 1;
+  }
+  else if (state === 'intro'){
+    ctx.fillStyle = 'rgba(4,6,12,0.78)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '600 13px ' + MONO;
+    ctx.fillStyle = 'rgba(150,195,255,0.6)';
+    ctx.fillText('CHAPTER ' + (levelIdx + 1) + ' / ' + LEVELS.length, W / 2, 250);
+    glowText(L.name, W / 2, 300, 40, 190);
+    ctx.font = '600 18px ' + FONT;
+    ctx.fillStyle = 'rgba(225,240,255,0.95)';
+    ctx.fillText(L.intro, W / 2, 372);
+    ctx.font = '600 13px ' + FONT;
+    ctx.fillStyle = 'rgba(160,205,245,0.8)';
+    ctx.fillText(L.tip, W / 2, 420);
+    ctx.font = '600 12px ' + FONT;
+    ctx.fillStyle = 'rgba(150,190,225,0.55)';
+    ctx.fillText('目标：' + ({ survive:'撑住倒计时', reach:'在黑暗中抵达出口', escort:'护送同行者' })[L.objective], W / 2, 460);
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(ambientT * 3.4);
+    ctx.font = '700 16px ' + FONT;
+    ctx.fillStyle = '#dff2ff';
+    ctx.fillText('轻触开始', W / 2, 640);
+    ctx.globalAlpha = 1;
+  }
+  else if (state === 'clear'){
+    ctx.fillStyle = 'rgba(4,6,12,0.74)'; ctx.fillRect(0, 0, W, H);
+    glowText('关卡完成', W / 2, 300, 34, 150);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '600 18px ' + FONT;
+    ctx.fillStyle = 'rgba(225,245,255,0.95)';
+    ctx.fillText(L.outro, W / 2, 366);
+    ctx.font = '700 15px ' + MONO;
+    ctx.fillStyle = 'rgba(200,235,255,0.8)';
+    ctx.fillText('SCORE ' + score, W / 2, 418);
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(ambientT * 3.4);
+    ctx.font = '700 16px ' + FONT;
+    ctx.fillStyle = '#dff2ff';
+    ctx.fillText('轻触领取强化', W / 2, 520);
+    ctx.globalAlpha = 1;
+  }
+  else if (state === 'choice'){
+    ctx.fillStyle = 'rgba(4,6,12,0.86)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    glowText('三选一 · 确定性强化', W / 2, 210, 24, 45);
+    ctx.font = '600 13px ' + FONT;
+    ctx.fillStyle = 'rgba(175,210,245,0.75)';
+    ctx.fillText('选择一条永久强化，进入下一关', W / 2, 248);
+    for (let i = 0; i < pending.length; i++){
+      const r = cardHit[i];
+      cardPanel(r.x, r.y, r.w, r.h, pending[i].hue, pending[i].name, pending[i].desc,
+        '已强化 ' + up(pending[i].id) + ' / ' + pending[i].max);
+    }
+  }
+  else if (state === 'fail'){
+    ctx.fillStyle = 'rgba(10,4,8,0.8)'; ctx.fillRect(0, 0, W, H);
+    glowText(failReason || '核心破碎', W / 2, 320, 30, 348);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '600 15px ' + FONT;
+    ctx.fillStyle = 'rgba(235,215,225,0.9)';
+    ctx.fillText('第' + (levelIdx + 1) + '关 · ' + L.name + ' 重新开始', W / 2, 380);
+    ctx.font = '600 13px ' + FONT;
+    ctx.fillStyle = 'rgba(200,175,195,0.7)';
+    ctx.fillText('强化保留 · 护盾重置', W / 2, 412);
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(ambientT * 3.4);
+    ctx.font = '700 16px ' + FONT;
+    ctx.fillStyle = '#ffe6ee';
+    ctx.fillText('轻触重来', W / 2, 520);
+    ctx.globalAlpha = 1;
+  }
+  else if (state === 'ending'){
+    ctx.fillStyle = 'rgba(4,8,14,0.88)'; ctx.fillRect(0, 0, W, H);
+    glowText('你冲出了巢', W / 2, 250, 30, 150);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '600 16px ' + FONT;
+    ctx.fillStyle = 'rgba(220,245,255,0.92)';
+    ctx.fillText('天亮了。蜂群在你的影子里排成一条路。', W / 2, 306);
+    ctx.font = '700 30px ' + MONO;
+    ctx.fillStyle = '#eaf6ff';
+    ctx.fillText(String(score), W / 2, 386);
+    ctx.font = '600 13px ' + FONT;
+    ctx.fillStyle = 'rgba(170,210,245,0.75)';
+    ctx.fillText('总得分 · 擦弹 ' + grazes + ' 次', W / 2, 424);
+    ctx.fillStyle = score >= bestScore && score > 0 ? '#ffd166' : 'rgba(170,210,245,0.75)';
+    ctx.fillText(score >= bestScore && score > 0 ? '★ 新纪录' : '最高 ' + bestScore, W / 2, 452);
+    ctx.globalAlpha = 0.55 + 0.45 * Math.sin(ambientT * 3.4);
+    ctx.font = '700 16px ' + FONT;
+    ctx.fillStyle = '#dff2ff';
+    ctx.fillText('轻触回到标题', W / 2, 560);
+    ctx.globalAlpha = 1;
+  }
+  if (annT > 0 && (state === 'play')){
+    ctx.globalAlpha = Math.min(1, annT / 0.7);
+    glowText(annText, W / 2, 140, 24, annHue, 'center', 700);
+    ctx.globalAlpha = 1;
+  }
+}
+function draw(){
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#05060c';
+  ctx.fillRect(0, 0, W, H);
+  const sx = (Math.random() * 2 - 1) * shake, sy = (Math.random() * 2 - 1) * shake;
+  ctx.save();
+  ctx.translate(sx, sy);
+  drawWorld();
+  ctx.restore();
+  if (state === 'play' || state === 'intro' || state === 'clear') drawHUD();
+  if (flash > 0){ ctx.fillStyle = 'rgba(255,255,255,' + (flash * 0.35) + ')'; ctx.fillRect(0, 0, W, H); }
+  drawOverlay();
+}
+
+/* ============================ 主循环（固定步长） ============================ */
+const STEP = 1 / 120;
+let acc = 0, last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = (now - last) / 1000; last = now;
+  if (dt > 0.25) dt = 0.25; if (dt < 0) dt = 0;
+  ambient(dt);
+  if (state === 'play'){
+    acc += dt;
+    let n = 0;
+    while (acc >= STEP && n < 12){ step(STEP); acc -= STEP; n++; if (state !== 'play') break; }
+    if (acc > STEP * 12) acc = 0;
+  } else acc = 0;
+  draw();
+}
+requestAnimationFrame(frame);
+
+/* ============================ 输入 ============================ */
+let drag = null, lastTap = { t: -9, x: 0, y: 0 };
+function toLocal(e){
+  const r = cvs.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+}
+function dashBtnZone(p){ return p.x > W - 100 && p.y > H - 100; }
+function inChoice(p){
+  for (let i = 0; i < cardHit.length; i++){
+    const r = cardHit[i];
+    if (p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h) return i;
+  }
+  return -1;
+}
+function advance(){
+  if (state === 'title'){ score = 0; grazes = 0; upgrades && Object.keys(upgrades).forEach(function(k){ delete upgrades[k]; }); maxShields = 3; startLevel(0, false); }
+  else if (state === 'intro'){ state = 'play'; graceT = 2.0; }
+  else if (state === 'clear'){ openChoices(); }
+  else if (state === 'fail'){ startLevel(levelIdx, true); }
+  else if (state === 'ending'){ state = 'title'; }
+}
+cvs.addEventListener('pointerdown', function(e){
+  e.preventDefault(); audio();
+  const p = toLocal(e);
+  if (state === 'choice'){
+    const idx = inChoice(p);
+    if (idx >= 0 && pending && pending[idx]) applyUpgrade(pending[idx]);
+    return;
+  }
+  if (state !== 'play'){
+    advance();
+    return;
+  }
+  if (dashBtnZone(p)){ if (LEVELS[levelIdx].unlockDash || levelIdx > 1) doDash(); return; }
+  drag = { ox: player.x - p.x, oy: player.y - p.y, t0: performance.now(), moved: 0, x0: p.x, y0: p.y };
+  target.x = clamp(p.x + drag.ox, 12, W - 12);
+  target.y = clamp(p.y + drag.oy, 58, H - 12);
+});
+cvs.addEventListener('pointermove', function(e){
+  if (state !== 'play' || !drag) return;
+  e.preventDefault();
+  const p = toLocal(e);
+  const nx = clamp(p.x + drag.ox, 12, W - 12), ny = clamp(p.y + drag.oy, 58, H - 12);
+  drag.moved += Math.hypot(nx - target.x, ny - target.y);
+  target.x = nx; target.y = ny;
+});
+cvs.addEventListener('pointerup', function(e){
+  if (state !== 'play' || !drag) { drag = null; return; }
+  const dt = performance.now() - drag.t0;
+  if (dt < 240 && drag.moved < 14) doPulse();
+  drag = null;
+});
+cvs.addEventListener('pointercancel', function(){ drag = null; });
+cvs.addEventListener('touchmove', function(e){ e.preventDefault(); }, { passive: false });
+window.addEventListener('keydown', function(e){
+  const k = e.key;
+  if (k === ' ' || k === 'Enter'){ e.preventDefault(); audio(); if (state === 'play') doPulse(); else advance(); }
+  else if (k === 'Shift'){ doDash(); }
+  else if (k === 'ArrowLeft' || k === 'a'){ target.x = clamp(target.x - 40, 12, W - 12); }
+  else if (k === 'ArrowRight' || k === 'd'){ target.x = clamp(target.x + 40, 12, W - 12); }
+  else if (k === 'ArrowUp' || k === 'w'){ target.y = clamp(target.y - 40, 58, H - 12); }
+  else if (k === 'ArrowDown' || k === 's'){ target.y = clamp(target.y + 40, 58, H - 12); }
+  else if (k === 'p' || k === 'P'){ /* 预留 */ }
+});
+cvs.style.cursor = 'pointer';
+
+/* ============================ 调试接口（不影响玩法） ============================ */
+window.__G = {
+  state: function(){ return state; },
+  level: function(){ return levelIdx; },
+  stats: function(){
+    return { state: state, level: levelIdx, shields: shields, energy: +energy.toFixed(2), score: score,
+             bullets: bullets.length, npcHp: npc ? Math.round(npc.hp) : -1, durLeft: +durLeft.toFixed(1),
+             progress: +progress.toFixed(2), rampT: +rampT.toFixed(1), corridorGap: Math.round(corridorGap),
+             dashCd: +dashCd.toFixed(2), invuln: +invuln.toFixed(2), grazes: grazes, particles: particles.length,
+             nearest: (function(){ let m = 9999; for (let i = 0; i < bullets.length; i++){ const d = Math.hypot(bullets[i].x - player.x, bullets[i].y - player.y); if (d < m) m = d; } return +m.toFixed(1); })() };
+  },
+  jump: function(i, skipIntro){ startLevel(i, skipIntro !== false); },
+  setDur: function(d){ durLeft = d; LEVELS[levelIdx].dur = Math.max(LEVELS[levelIdx].dur, d); },
+  win: function(){ levelClear(); },
+  fail: function(){ shields = 0; playerHit(true); },
+  hurt: function(){ playerHit(true); },
+  give: function(){ energy = 1; },
+  gate: function(){ return exitGate ? { x: exitGate.x, y: exitGate.y } : null; },
+  auto: function(i){ startLevel(i, true); state = 'play'; }
+};
+})();
+</script>
+</body>
+</html>

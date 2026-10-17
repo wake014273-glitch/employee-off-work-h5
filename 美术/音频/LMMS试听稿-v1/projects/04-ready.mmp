@@ -1,0 +1,11 @@
+<?xml version="1.0"?><!DOCTYPE lmms-project>
+<lmms-project creator="LMMS" creatorversion="1.2.2" version="1.0" type="song"><head bpm="160" mastervol="72" masterpitch="0" timesig_numerator="4" timesig_denominator="4"/>
+<song><trackcontainer x="5" y="5" width="1400" height="650" visible="1" minimized="0" maximized="0" type="song"><track type="0" name="Shield fully charged" muted="0" solo="0"><instrumenttrack vol="30" pan="0" pitch="0" basenote="57" fxch="0" pitchrange="1" usemasterpitch="1">
+    <instrument name="tripleoscillator"><tripleoscillator vol0="100" vol1="12" vol2="0" wavetype0="0" wavetype1="0" wavetype2="0" coarse0="0" coarse1="12" coarse2="0" finel0="0" finer0="0" finel1="0" finer1="0" finel2="0" finer2="0" pan0="0" pan1="0" pan2="0" modalgo1="0" modalgo2="0" modalgo3="0" phoffset0="0" phoffset1="0" phoffset2="0" stphdetun0="0" stphdetun1="0" stphdetun2="0"/></instrument>
+    <eldata fwet="0" ftype="0" fcut="14000" fres="0.7"><elvol amt="1" pdel="0" att="0.001" hold="0" dec="0.15" sustain="0.04" rel="0.08" lamt="0" lspd="0.1" x100="0"/><elcut amt="0" lamt="0"/><elres amt="0" lamt="0"/></eldata>
+    <chordcreator chord-enabled="0"/><arpeggiator arp-enabled="0"/><fxchain enabled="0" numofeffects="0"/>
+  </instrumenttrack><pattern name="Shield fully charged" type="1" steps="16" pos="0" len="192" muted="0"><note pos="0" key="66" len="8" vol="73" pan="0"/><note pos="12" key="69" len="8" vol="78" pan="0"/><note pos="24" key="74" len="18" vol="82" pan="0"/><note pos="27" key="78" len="15" vol="40" pan="0"/></pattern></track></trackcontainer>
+<fxmixer x="5" y="670" width="600" height="300" visible="0"><fxchannel num="0" name="Master" volume="1" muted="0"><fxchain enabled="0" numofeffects="0"/></fxchannel></fxmixer>
+<pianoroll x="20" y="30" width="1000" height="600" visible="0"/>
+<projectnotes x="1420" y="5" width="500" height="500" visible="0"><![CDATA[Shield fully charged / Original synthesized prototype. Trim trailing silence after export.]]></projectnotes>
+<timeline lp0pos="0" lp1pos="192" lpstate="1"/><controllers/></song></lmms-project>

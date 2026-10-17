@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "status": "draft-for-listening",
+  "original": true,
+  "sampleRate": 44100,
+  "projects": [
+    {
+      "file": "01-fish-break-loop",
+      "bpm": 112,
+      "bars": 16,
+      "loopSeconds": 34.285714285714285,
+      "notes": "Fish Break / 摸鱼小步 v1. Original 16-bar sketch, D major, 112 BPM, 4/4. Loop 0–3072 ticks, 34.285714 s. Eight editable tracks. Prototype for review; not installed in the game."
+    },
+    {
+      "file": "02-ui",
+      "bpm": 160,
+      "bars": 1,
+      "loopSeconds": 1.5,
+      "notes": "UI soft pop / Original synthesized prototype. Trim trailing silence after export."
+    },
+    {
+      "file": "03-pickup",
+      "bpm": 160,
+      "bars": 1,
+      "loopSeconds": 1.5,
+      "notes": "Fish pickup / Original synthesized prototype. Trim trailing silence after export."
+    },
+    {
+      "file": "04-ready",
+      "bpm": 160,
+      "bars": 1,
+      "loopSeconds": 1.5,
+      "notes": "Shield fully charged / Original synthesized prototype. Trim trailing silence after export."
+    },
+    {
+      "file": "05-shield",
+      "bpm": 160,
+      "bars": 1,
+      "loopSeconds": 1.5,
+      "notes": "Bubble shield on / Original synthesized prototype. Trim trailing silence after export."
+    },
+    {
+      "file": "06-hit",
+      "bpm": 160,
+      "bars": 1,
+      "loopSeconds": 1.5,
+      "notes": "Soft workload bump / Original synthesized prototype. Trim trailing silence after export."
+    }
+  ]
+}

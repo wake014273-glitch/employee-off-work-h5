@@ -1,0 +1,14 @@
+{
+  "version": 3,
+  "duration": 2.65,
+  "rate": 44100,
+  "channels": 1,
+  "bits": 16,
+  "bytes": 233774,
+  "peakDBFS": -3.3498217458752726,
+  "source": "https://opengameart.org/content/evil-laugh",
+  "author": "AntumDeluge",
+  "license": "CC0-1.0",
+  "sourceSHA256": "2662d484fd3f174145de1ac7527994d153b109ff8f1ee3ac83591beec58d62e4",
+  "outputSHA256": "60c1028b07139e3366d71e7935d48d8d559a932678e7f538ef0da3c8617740cd"
+}

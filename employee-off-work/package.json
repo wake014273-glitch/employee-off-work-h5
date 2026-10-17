@@ -1,0 +1,18 @@
+{
+  "name": "employee-off-work",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:soak": "node --test tests/soak.test.mjs",
+    "qa": "node scripts/qa-playthrough.mjs",
+    "qa:wechat": "node scripts/qa-wechat.mjs",
+    "build:web": "node scripts/build.mjs web-mobile",
+    "build:wechat": "node scripts/build.mjs wechatgame false appid=wxcefa299717fbb2da",
+    "audit:size": "node scripts/report-build-size.mjs wechatgame"
+  },
+  "creator": {
+    "version": "3.8.8"
+  },
+  "uuid": "c0bc487f-a12e-4e79-95e0-939c817f84cd"
+}

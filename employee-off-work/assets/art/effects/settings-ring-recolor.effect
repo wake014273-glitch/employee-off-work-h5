@@ -1,0 +1,68 @@
+// Reuse time.png's painted settings ring. Keep its dark inks and original lighting;
+// recolor only the lavender surface, and remove the pause icon / adjoining paper.
+CCEffect %{
+  techniques:
+  - passes:
+    - vert: ring-vs:vert
+      frag: ring-fs:frag
+      depthStencilState:
+        depthTest: false
+        depthWrite: false
+      blendState:
+        targets:
+        - blend: true
+          blendSrc: src_alpha
+          blendDst: one_minus_src_alpha
+          blendDstAlpha: one_minus_src_alpha
+      rasterizerState:
+        cullMode: none
+}%
+
+CCProgram ring-vs %{
+  precision highp float;
+  #include <builtin/uniforms/cc-global>
+  #if USE_LOCAL
+    #include <builtin/uniforms/cc-local>
+  #endif
+  in vec3 a_position;
+  in vec2 a_texCoord;
+  in vec4 a_color;
+  out vec4 color;
+  out vec2 uv0;
+  vec4 vert () {
+    vec4 position = vec4(a_position, 1.0);
+    #if USE_LOCAL
+      position = cc_matWorld * position;
+    #endif
+    uv0 = a_texCoord;
+    color = a_color;
+    return cc_matViewProj * position;
+  }
+}%
+
+CCProgram ring-fs %{
+  precision highp float;
+  #include <builtin/internal/embedded-alpha>
+  in vec4 color;
+  in vec2 uv0;
+  #pragma builtin(local)
+  layout(set = 2, binding = 12) uniform sampler2D cc_spriteTexture;
+  vec4 frag () {
+    vec4 source = CCSampleWithAlphaSeparated(cc_spriteTexture, uv0);
+    vec2 pixel = uv0 * vec2(1144.0, 450.0);
+    vec2 delta = pixel - vec2(237.0, 240.0);
+    float outer = length(delta / vec2(200.0, 204.0));
+    float inner = length(delta);
+    float alpha = source.a * (1.0 - smoothstep(1.0, 1.008, outer))
+      * smoothstep(134.0, 136.0, inner);
+    // Outside the band, the attached card is orange/cream rather than plum.
+    if (outer > 0.85 && source.g > source.b + 0.02) alpha = 0.0;
+    float light = dot(source.rgb, vec3(0.299, 0.587, 0.114));
+    float chroma = max(max(source.r, source.g), source.b) - min(min(source.r, source.g), source.b);
+    // Mist blue/cyan: cool pearl highlights, muted blue-green body, deeper teal shade.
+    vec3 mistBlue = clamp(vec3(light) + chroma * vec3(-0.82, 0.45, 0.68), 0.0, 1.0);
+    // Leave the low-luminance plum outlines exactly as painted in the settings source.
+    vec3 rgb = mix(source.rgb, mistBlue, smoothstep(0.25, 0.40, light));
+    return vec4(rgb * color.rgb, alpha * color.a);
+  }
+}%

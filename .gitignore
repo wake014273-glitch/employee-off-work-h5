@@ -1,0 +1,22 @@
+# Local tools and installers
+/tools/
+
+# Cocos Creator generated data
+/employee-off-work/library/
+/employee-off-work/temp/
+/employee-off-work/local/
+/employee-off-work/build/
+/employee-off-work/profiles/
+/employee-off-work/node_modules/
+/employee-off-work/native/engine/android/**/assets
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+dist/
+
+.env
+.env.*

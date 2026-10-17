@@ -1,0 +1,77 @@
+{
+  "status": "draft-for-listening",
+  "files": [
+    {
+      "file": "01-fish-break-loop.wav",
+      "seconds": 34.285714285714285,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -6.020599913279625,
+      "rmsDb": -25.475430048026347,
+      "clippedSamples": 0,
+      "sourceFrames": 1511936,
+      "loop": true
+    },
+    {
+      "file": "02-ui.wav",
+      "seconds": 0.04929705215419501,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -9.876630980873696,
+      "rmsDb": -24.965002190128818,
+      "clippedSamples": 0,
+      "sourceFrames": 132096,
+      "loop": false
+    },
+    {
+      "file": "03-pickup.wav",
+      "seconds": 0.16369614512471656,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.821562577350983,
+      "rmsDb": -15.96615800835905,
+      "clippedSamples": 0,
+      "sourceFrames": 132096,
+      "loop": false
+    },
+    {
+      "file": "04-ready.wav",
+      "seconds": 0.3503854875283447,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.013189010928365,
+      "rmsDb": -13.236037354916046,
+      "clippedSamples": 0,
+      "sourceFrames": 132096,
+      "loop": false
+    },
+    {
+      "file": "05-shield.wav",
+      "seconds": 0.388140589569161,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.731495543059702,
+      "rmsDb": -15.04487785446445,
+      "clippedSamples": 0,
+      "sourceFrames": 132096,
+      "loop": false
+    },
+    {
+      "file": "06-hit.wav",
+      "seconds": 0.13285714285714287,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.945629959179915,
+      "rmsDb": -20.26954109939348,
+      "clippedSamples": 0,
+      "sourceFrames": 132096,
+      "loop": false
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "original": true,
+  "renderer": "LMMS 1.2.2",
+  "files": [
+    {
+      "name": "leave",
+      "title": "请假获批清屏",
+      "seconds": 0.29848072562358274,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.436974992327127,
+      "rmsDb": -14.751132216700459,
+      "clippedSamples": 0,
+      "sha256": "dcf4034fac2ef40a75afec30be1aa28dc3d126ad9727cc2a0c23b5c3685166bb"
+    },
+    {
+      "name": "reduce",
+      "title": "AI／Agent 减负",
+      "seconds": 0.2423809523809524,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.80354818736543,
+      "rmsDb": -16.09764966888988,
+      "clippedSamples": 0,
+      "sha256": "1caa3f2fcdbbc16918d1d2b714d0692175bd6336912f1cdacdc774cb053bddf9"
+    },
+    {
+      "name": "countdown",
+      "title": "恢复倒计时 3／2／1",
+      "seconds": 0.041768707482993196,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -7.421236692633036,
+      "rmsDb": -18.388566122409557,
+      "clippedSamples": 0,
+      "sha256": "8f4aa3ba51088e080581a1e21d81d13a5952d42f3174c1a7c1e946b42e929a9c"
+    },
+    {
+      "name": "resume",
+      "title": "恢复游戏",
+      "seconds": 0.21108843537414965,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.764897921539001,
+      "rmsDb": -15.457599454652113,
+      "clippedSamples": 0,
+      "sha256": "a7dd07b1ed79635784cd9a6fafe766fb80954923504873e1ae559209ac9f37fb"
+    },
+    {
+      "name": "grade",
+      "title": "B／A／S 操作评级",
+      "seconds": 0.22965986394557822,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.763698546898985,
+      "rmsDb": -13.999560906331052,
+      "clippedSamples": 0,
+      "sha256": "d79d377b8e55e875344bb4a308098f45928c53440a1a23673866c4f6a8a6bd91"
+    },
+    {
+      "name": "skill",
+      "title": "穿缝／已读不回技巧成功",
+      "seconds": 0.10934240362811791,
+      "rate": 44100,
+      "channels": 2,
+      "bits": 16,
+      "peakDb": -4.7198781934568625,
+      "rmsDb": -19.309701076900613,
+      "clippedSamples": 0,
+      "sha256": "e361d3874fc16ed42f9675b8a3806c685968df17ac5650b68c38abe2b131841e"
+    }
+  ]
+}
